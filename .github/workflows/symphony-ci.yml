@@ -16,32 +16,21 @@ jobs:
 
       - name: Validate workflow YAML
         run: |
-          python3 -c "
-          import yaml, glob, sys
-          errors = []
-          for f in glob.glob('.github/workflows/*.yml'):
-              try:
-                  yaml.safe_load(open(f))
-              except yaml.YAMLError as e:
-                  errors.append(f'{f}: {e}')
-          if errors:
-              print('YAML errors:')
-              for e in errors: print(e)
-              sys.exit(1)
-          print(f'All {len(glob.glob(\".github/workflows/*.yml\"))} workflow files are valid YAML')
-          "
+          pip install yq --quiet
+          for f in .github/workflows/*.yml; do
+            yq . "$f" > /dev/null && echo "OK: $f" || { echo "INVALID: $f"; exit 1; }
+          done
 
       - name: Validate shell scripts
-        run: |
-          if command -v shellcheck &>/dev/null; then
-            shellcheck scripts/*.sh || true
-          else
-            bash -n scripts/*.sh && echo "Shell syntax OK"
-          fi
+        run: bash -n scripts/*.sh && echo "Shell syntax OK"
 
   review:
     needs: ci
     if: startsWith(github.head_ref, 'symphony/issue-')
+    permissions:
+      issues: write
+      contents: write
+      pull-requests: write
     uses: ./.github/workflows/symphony-review.yml
     with:
       pr_number: ${{ github.event.pull_request.number }}
