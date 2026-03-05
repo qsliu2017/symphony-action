@@ -3,24 +3,52 @@ name: Symphony
 on:
   issues:
     types: [opened, reopened]
+  push:
+    branches: [main]
   schedule:
     - cron: '0 * * * *'
   workflow_dispatch:
     inputs:
       issue_number:
-        description: "Issue to work on (leave blank to auto-discover)"
+        description: "Issue to implement (required for dispatch)"
         type: number
         required: false
+      attempt:
+        description: "Retry attempt number"
+        type: number
+        required: false
+        default: 0
 
 jobs:
   dispatch:
+    if: github.event_name == 'issues' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
     permissions:
       issues: write
-      contents: read
+      contents: write
+      pull-requests: write
       actions: write
-    uses: ./.github/workflows/symphony-dispatch.yml
-    with:
-      issue_number: ${{ github.event.issue.number || inputs.issue_number }}
-      workflow_file: WORKFLOW.md
-    secrets:
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - uses: qsliu2017/symphony-action@main
+        with:
+          phrase: dispatch
+          issue_number: ${{ github.event.issue.number || inputs.issue_number }}
+          attempt: ${{ inputs.attempt || 0 }}
+          workflow_file: WORKFLOW.md
+          dispatch_workflow: symphony.yml
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+
+  find:
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: read
+      actions: write
+    steps:
+      - uses: qsliu2017/symphony-action@main
+        with:
+          phrase: find
+          workflow_file: WORKFLOW.md
+          dispatch_workflow: symphony.yml
