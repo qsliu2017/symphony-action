@@ -1,0 +1,136 @@
+name: Symphony
+description: >
+  Orchestrates Claude Code agents to autonomously implement GitHub Issues ��
+  plan, branch, implement, review, merge, and loop.
+author: Symphony
+
+branding:
+  icon: activity
+  color: purple
+
+inputs:
+  mode:
+    description: >
+      Which phase to run: dispatch | worker | review | post-merge
+    required: true
+  issue_number:
+    description: "GitHub issue number (required for worker mode)"
+    required: false
+  pr_number:
+    description: "GitHub PR number (required for review mode)"
+    required: false
+  attempt:
+    description: "Retry attempt count (worker mode)"
+    required: false
+    default: "0"
+  workflow_file:
+    description: "Path to WORKFLOW.md in the consuming repo"
+    required: false
+    default: "WORKFLOW.md"
+  claude_code_oauth_token:
+    description: "Claude.ai OAuth token (from `claude setup-token`). Use this or anthropic_api_key."
+    required: false
+  anthropic_api_key:
+    description: "Anthropic API key. Use this or claude_code_oauth_token."
+    required: false
+
+runs:
+  using: composite
+  steps:
+    # --- shared setup ---
+    - name: Install Claude Code CLI
+      shell: bash
+      run: npm install -g @anthropic-ai/claude-code
+
+    - name: Make scripts executable
+      shell: bash
+      run: chmod +x ${{ github.action_path }}/scripts/*.sh
+
+    # --- dispatch mode ---
+    - name: Parse WORKFLOW.md (dispatch)
+      if: inputs.mode == 'dispatch'
+      id: dispatch_config
+      shell: bash
+      run: |
+        eval "$(bash ${{ github.action_path }}/scripts/parse-workflow.sh "${{ inputs.workflow_file }}")"
+        echo "max_concurrent=${SYMPHONY_MAX_CONCURRENT_AGENTS}" >> "$GITHUB_OUTPUT"
+
+    - name: Count active jobs (dispatch)
+      if: inputs.mode == 'dispatch'
+      id: dispatch_count
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        REPO="${{ github.repository }}"
+        A=$(gh issue list --repo "$REPO" --state open --label "symphony:in-progress" --json number --limit 100 | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
+        B=$(gh issue list --repo "$REPO" --state open --label "symphony:pr-open" --json number --limit 100 | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
+        echo "active=$((A+B))" >> "$GITHUB_OUTPUT"
+
+    - name: Dispatch issues
+      if: inputs.mode == 'dispatch'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        CLAUDE_CODE_OAUTH_TOKEN: ${{ inputs.claude_code_oauth_token }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
+      run: |
+        MAX="${{ steps.dispatch_config.outputs.max_concurrent }}"
+        ACTIVE="${{ steps.dispatch_count.outputs.active }}"
+        if [[ "$ACTIVE" -ge "$MAX" ]]; then
+          echo "Concurrency limit reached (${ACTIVE}/${MAX})" >&2
+          exit 0
+        fi
+        if [[ -n "${{ inputs.issue_number }}" ]]; then
+          ISSUES="${{ inputs.issue_number }}"
+        else
+          SLOTS=$((MAX - ACTIVE))
+          ISSUES=$(bash ${{ github.action_path }}/scripts/find-open-issues.sh | head -n "$SLOTS")
+        fi
+        while IFS= read -r n; do
+          [[ -z "$n" ]] && continue
+          echo "Dispatching issue #${n}" >&2
+          gh workflow run symphony-worker.yml \
+            --repo "${{ github.repository }}" \
+            --field issue_number="${n}" \
+            --field workflow_file="${{ inputs.workflow_file }}" || true
+        done <<< "$ISSUES"
+
+    # --- worker mode ---
+    - name: Run worker
+      if: inputs.mode == 'worker'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        CLAUDE_CODE_OAUTH_TOKEN: ${{ inputs.claude_code_oauth_token }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
+      run: |
+        bash ${{ github.action_path }}/scripts/implement-issue.sh
+
+    # --- review mode ---
+    - name: Run review
+      if: inputs.mode == 'review'
+      shell: bash
+      env:
+        PR_NUMBER: ${{ inputs.pr_number }}
+        GH_TOKEN: ${{ github.token }}
+        CLAUDE_CODE_OAUTH_TOKEN: ${{ inputs.claude_code_oauth_token }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
+      run: |
+        bash ${{ github.action_path }}/scripts/review-pr.sh
+
+    # --- post-merge mode ---
+    - name: Find more work (post-merge)
+      if: inputs.mode == 'post-merge'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+      run: |
+        ISSUES=$(bash ${{ github.action_path }}/scripts/find-open-issues.sh)
+        if [[ -n "$ISSUES" ]]; then
+          gh workflow run symphony-dispatch.yml \
+            --repo "${{ github.repository }}" \
+            --field workflow_file="${{ inputs.workflow_file }}" || true
+        fi

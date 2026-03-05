@@ -1,0 +1,50 @@
+name: Symphony CI + Review
+
+# Runs on symphony PRs: validates workflow files, then triggers Claude review.
+# In your own repo, replace the 'ci' job steps with your real test suite.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    if: startsWith(github.head_ref, 'symphony/issue-')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate workflow YAML
+        run: |
+          python3 -c "
+          import yaml, glob, sys
+          errors = []
+          for f in glob.glob('.github/workflows/*.yml'):
+              try:
+                  yaml.safe_load(open(f))
+              except yaml.YAMLError as e:
+                  errors.append(f'{f}: {e}')
+          if errors:
+              print('YAML errors:')
+              for e in errors: print(e)
+              sys.exit(1)
+          print(f'All {len(glob.glob(\".github/workflows/*.yml\"))} workflow files are valid YAML')
+          "
+
+      - name: Validate shell scripts
+        run: |
+          if command -v shellcheck &>/dev/null; then
+            shellcheck scripts/*.sh || true
+          else
+            bash -n scripts/*.sh && echo "Shell syntax OK"
+          fi
+
+  review:
+    needs: ci
+    if: startsWith(github.head_ref, 'symphony/issue-')
+    uses: ./.github/workflows/symphony-review.yml
+    with:
+      pr_number: ${{ github.event.pull_request.number }}
+      workflow_file: WORKFLOW.md
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

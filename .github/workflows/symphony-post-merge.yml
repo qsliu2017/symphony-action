@@ -1,0 +1,65 @@
+name: Symphony Post-Merge (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      workflow_file:
+        description: "Path to WORKFLOW.md in the caller repo"
+        type: string
+        required: false
+        default: "WORKFLOW.md"
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN:
+        description: "Claude.ai OAuth token (from `claude setup-token`)"
+        required: false
+      ANTHROPIC_API_KEY:
+        description: "Anthropic API key (alternative to CLAUDE_CODE_OAUTH_TOKEN)"
+        required: false
+
+jobs:
+  find-more-work:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: read
+
+    steps:
+      - name: Checkout caller repo
+        uses: actions/checkout@v4
+
+      - name: Resolve Symphony scripts
+        id: symphony
+        run: |
+          if [[ -f "$GITHUB_WORKSPACE/scripts/find-open-issues.sh" ]]; then
+            SCRIPTS_DIR="$GITHUB_WORKSPACE/scripts"
+          else
+            git clone --depth=1 https://github.com/qsliu2017/symphony-action.git /tmp/_symphony
+            SCRIPTS_DIR="/tmp/_symphony/scripts"
+          fi
+          chmod +x "$SCRIPTS_DIR"/*.sh
+          echo "dir=$SCRIPTS_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Find open unclaimed issues
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          ISSUES=$(bash "${{ steps.symphony.outputs.dir }}/find-open-issues.sh")
+          if [[ -n "$ISSUES" ]]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "Found open issues:" >&2
+            echo "$ISSUES" >&2
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No open unclaimed issues found" >&2
+          fi
+
+      - name: Trigger dispatch for remaining issues
+        if: steps.find.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run symphony-dispatch.yml \
+            --repo "${{ github.repository }}" \
+            --field workflow_file="${{ inputs.workflow_file }}" || true
+          echo "Triggered symphony-dispatch to handle remaining issues" >&2

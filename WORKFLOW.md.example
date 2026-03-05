@@ -1,0 +1,52 @@
+---
+agent:
+  max_concurrent_agents: 3
+  max_turns: 10
+  max_retry_backoff_ms: 300000
+
+hooks:
+  before_run: |
+    # Commands to run before Claude starts implementing (e.g. install deps)
+    # npm install
+    # pip install -r requirements.txt
+  after_run: |
+    # Commands to run after Claude finishes (e.g. lint, format)
+    # npm run lint --fix
+    # black .
+  timeout_ms: 120000
+
+claude:
+  command: claude
+  model: claude-sonnet-4-6
+  max_tokens: 8096
+
+complexity:
+  # "auto" = let Claude decide whether to split into sub-issues
+  # "never" = always implement directly, never create sub-issues
+  sub_issue_threshold: auto
+---
+
+You are working on issue #{{ issue.number }}: {{ issue.title }}
+
+## Issue Description
+
+{{ issue.body }}
+
+{% if attempt > 0 %}
+## Note: Retry Attempt {{ attempt }}
+
+This is retry attempt {{ attempt }}. Please review any existing work on this branch and
+continue from where the previous attempt left off, fixing any issues found.
+{% endif %}
+
+## Instructions
+
+Please implement the changes needed to resolve this issue. Follow these guidelines:
+
+1. Read and understand the existing codebase before making changes
+2. Make targeted, minimal changes that address only what the issue asks for
+3. Follow the existing code style and conventions
+4. Do not open a PR — the orchestrator will handle that
+5. Do not commit — the orchestrator will commit your changes
+
+When you are done implementing, stop. The orchestrator will take over from here.

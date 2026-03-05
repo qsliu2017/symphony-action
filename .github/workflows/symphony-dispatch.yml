@@ -1,0 +1,123 @@
+name: Symphony Dispatch (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        description: "Specific issue number to dispatch (omit to auto-discover)"
+        type: number
+        required: false
+      workflow_file:
+        description: "Path to WORKFLOW.md in the caller repo"
+        type: string
+        required: false
+        default: "WORKFLOW.md"
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN:
+        description: "Claude.ai OAuth token (from `claude setup-token`)"
+        required: false
+      ANTHROPIC_API_KEY:
+        description: "Anthropic API key (alternative to CLAUDE_CODE_OAUTH_TOKEN)"
+        required: false
+
+concurrency:
+  group: symphony-dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+
+    steps:
+      - name: Checkout caller repo
+        uses: actions/checkout@v4
+
+      - name: Resolve Symphony scripts
+        id: symphony
+        run: |
+          if [[ -f "$GITHUB_WORKSPACE/scripts/parse-workflow.sh" ]]; then
+            SCRIPTS_DIR="$GITHUB_WORKSPACE/scripts"
+          else
+            git clone --depth=1 https://github.com/qsliu2017/symphony-action.git /tmp/_symphony
+            SCRIPTS_DIR="/tmp/_symphony/scripts"
+          fi
+          chmod +x "$SCRIPTS_DIR"/*.sh
+          echo "dir=$SCRIPTS_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Parse WORKFLOW.md
+        id: config
+        run: |
+          eval "$(bash "${{ steps.symphony.outputs.dir }}/parse-workflow.sh" "${{ inputs.workflow_file }}")"
+          echo "max_concurrent=${SYMPHONY_MAX_CONCURRENT_AGENTS}" >> "$GITHUB_OUTPUT"
+
+      - name: Count active Symphony jobs
+        id: count
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REPO="${{ github.repository }}"
+          ACTIVE=$(gh issue list \
+            --repo "$REPO" \
+            --state open \
+            --label "symphony:in-progress" \
+            --json number --limit 100 | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
+          PR_OPEN=$(gh issue list \
+            --repo "$REPO" \
+            --state open \
+            --label "symphony:pr-open" \
+            --json number --limit 100 | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
+          TOTAL=$((ACTIVE + PR_OPEN))
+          echo "active=${TOTAL}" >> "$GITHUB_OUTPUT"
+          echo "Active Symphony jobs: ${TOTAL}" >&2
+
+      - name: Check concurrency limit
+        id: check_limit
+        run: |
+          MAX="${{ steps.config.outputs.max_concurrent }}"
+          ACTIVE="${{ steps.count.outputs.active }}"
+          if [[ "$ACTIVE" -ge "$MAX" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Concurrency limit reached (${ACTIVE}/${MAX}) — skipping dispatch" >&2
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Concurrency OK (${ACTIVE}/${MAX})" >&2
+          fi
+
+      - name: Dispatch specific issue
+        if: inputs.issue_number && steps.check_limit.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run symphony-worker.yml \
+            --repo "${{ github.repository }}" \
+            --field issue_number="${{ inputs.issue_number }}" \
+            --field workflow_file="${{ inputs.workflow_file }}"
+
+      - name: Discover and dispatch open issues
+        if: '!inputs.issue_number && steps.check_limit.outputs.skip == ''false'''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          MAX="${{ steps.config.outputs.max_concurrent }}"
+          ACTIVE="${{ steps.count.outputs.active }}"
+          SLOTS=$((MAX - ACTIVE))
+
+          ISSUES=$(bash "${{ steps.symphony.outputs.dir }}/find-open-issues.sh" | head -n "$SLOTS")
+
+          if [[ -z "$ISSUES" ]]; then
+            echo "No eligible issues found" >&2
+            exit 0
+          fi
+
+          while IFS= read -r issue_num; do
+            [[ -z "$issue_num" ]] && continue
+            echo "Dispatching issue #${issue_num}" >&2
+            gh workflow run symphony-worker.yml \
+              --repo "${{ github.repository }}" \
+              --field issue_number="${issue_num}" \
+              --field workflow_file="${{ inputs.workflow_file }}" || true
+          done <<< "$ISSUES"
