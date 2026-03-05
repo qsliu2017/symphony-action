@@ -52,6 +52,7 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
+      actions: write
 
     steps:
       - name: Checkout default branch
@@ -245,10 +246,12 @@ jobs:
         if: steps.plan.outputs.complex == 'false'
         id: changes
         run: |
-          if git diff --quiet && git diff --staged --quiet; then
+          if [[ -z "$(git status --porcelain)" ]]; then
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
           else
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "Changed files:" >&2
+            git status --porcelain >&2
           fi
 
       - name: Commit and push changes
