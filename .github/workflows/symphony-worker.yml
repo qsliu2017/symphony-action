@@ -40,6 +40,9 @@ on:
       ANTHROPIC_API_KEY:
         description: "Anthropic API key (alternative to CLAUDE_CODE_OAUTH_TOKEN)"
         required: false
+      GH_PAT:
+        description: "GitHub PAT with repo+workflow scope. Used for gh pr create so pull_request events fire and trigger CI. Falls back to GITHUB_TOKEN (but CI won't auto-trigger without a PAT)."
+        required: false
 
 concurrency:
   group: symphony-issue-${{ inputs.issue_number }}
@@ -265,7 +268,9 @@ jobs:
         if: steps.plan.outputs.complex == 'false' && steps.changes.outputs.has_changes == 'true'
         id: pr
         env:
-          GH_TOKEN: ${{ github.token }}
+          # Use PAT if provided — PRs created with PAT trigger pull_request events so CI fires.
+          # PRs created with GITHUB_TOKEN do NOT trigger CI (GitHub security restriction).
+          GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
         run: |
           BRANCH="symphony/issue-${{ inputs.issue_number }}"
           TITLE="feat: ${{ steps.issue.outputs.title }}"
@@ -279,15 +284,26 @@ jobs:
           PR_URL=$(gh pr create \
             --repo "${{ github.repository }}" \
             --head "$BRANCH" \
-            --base "${{ github.event.repository.default_branch || 'main' }}" \
+            --base "main" \
             --title "$TITLE" \
-            --body "$BODY" 2>&1 || gh pr view "$BRANCH" --repo "${{ github.repository }}" --json url -q .url)
+            --body "$BODY") || \
+          PR_URL=$(gh pr view "$BRANCH" --repo "${{ github.repository }}" --json url -q .url)
 
           echo "url=${PR_URL}" >> "$GITHUB_OUTPUT"
           echo "Created PR: ${PR_URL}" >&2
 
           PR_NUM=$(echo "$PR_URL" | grep -oE '[0-9]+$' || echo "")
           echo "number=${PR_NUM}" >> "$GITHUB_OUTPUT"
+
+          # If no PAT was provided, CI won't auto-trigger — dispatch review directly.
+          if [[ -z "${{ secrets.GH_PAT }}" ]]; then
+            echo "No GH_PAT set — CI will not auto-trigger. Dispatching review directly after 30s..." >&2
+            sleep 30
+            gh workflow run symphony-review.yml \
+              --repo "${{ github.repository }}" \
+              --field pr_number="${PR_NUM}" \
+              --field workflow_file="${{ inputs.workflow_file }}" || true
+          fi
 
       - name: Comment on issue with PR link
         if: steps.plan.outputs.complex == 'false' && steps.changes.outputs.has_changes == 'true'
