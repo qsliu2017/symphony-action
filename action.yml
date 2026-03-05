@@ -8,7 +8,7 @@ branding:
 
 inputs:
   phrase:
-    description: "'dispatch' — implement an issue; 'review' — review a PR; 'find' — find open issues and dispatch workers"
+    description: "'dispatch' -- implement an issue; 'review' -- review a PR; 'find' -- find open issues and dispatch workers"
     required: true
   issue_number:
     description: "GitHub issue number (dispatch mode)"
@@ -36,17 +36,17 @@ inputs:
     default: ""
 
 # Secrets are passed via env: on the calling step:
-#   ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN  — for Claude Code CLI
-#   GH_PAT                                         — optional, makes PRs trigger CI
+#   ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN  -- for Claude Code CLI
+#   GH_PAT                                         -- optional, makes PRs trigger CI
 
 runs:
   using: composite
   steps:
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ==========================================================================
     # SETUP
     # review must fetch PR info before checkout to know which branch to check out
-    # ══════════════════════════════════════════════════════════════════════════
+    # ==========================================================================
 
     - name: Fetch PR info
       if: inputs.phrase == 'review'
@@ -126,9 +126,9 @@ runs:
           echo "EOF_PROMPT"
         } >> "$GITHUB_OUTPUT"
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # DISPATCH — implement one issue
-    # ══════════════════════════════════════════════════════════════════════════
+    # ==========================================================================
+    # DISPATCH -- implement one issue
+    # ==========================================================================
 
     - name: Label issue in-progress
       if: inputs.phrase == 'dispatch'
@@ -312,7 +312,7 @@ Implemented by Symphony via Claude Code.
 
         # If no PAT: CI won't auto-trigger; dispatch review directly if configured
         if [[ -z "${{ env.GH_PAT }}" && -n "${{ inputs.review_workflow }}" ]]; then
-          echo "No GH_PAT — dispatching review after 30s..." >&2
+          echo "No GH_PAT -- dispatching review after 30s..." >&2
           sleep 30
           gh workflow run "${{ inputs.review_workflow }}" \
             --repo "${{ github.repository }}" \
@@ -355,7 +355,7 @@ Implemented by Symphony via Claude Code.
           echo "No changes on attempt ${ATTEMPT}, retrying (${NEXT_ATTEMPT}/${MAX_TURNS})" >&2
           gh issue comment "${{ inputs.issue_number }}" \
             --repo "${{ github.repository }}" \
-            --body "Symphony made no changes on attempt ${ATTEMPT} — retrying (attempt ${NEXT_ATTEMPT})."
+            --body "Symphony made no changes on attempt ${ATTEMPT} -- retrying (attempt ${NEXT_ATTEMPT})."
           gh issue edit "${{ inputs.issue_number }}" \
             --remove-label "symphony:in-progress" \
             --repo "${{ github.repository }}" || true
@@ -367,22 +367,22 @@ Implemented by Symphony via Claude Code.
               --field attempt="${NEXT_ATTEMPT}" \
               --field workflow_file="${{ inputs.workflow_file }}"
           else
-            echo "No dispatch_workflow set — cannot auto-retry. Re-trigger manually." >&2
+            echo "No dispatch_workflow set -- cannot auto-retry. Re-trigger manually." >&2
           fi
         else
           echo "Giving up after ${MAX_TURNS} attempts" >&2
           gh issue comment "${{ inputs.issue_number }}" \
             --repo "${{ github.repository }}" \
-            --body "Symphony made no changes after ${MAX_TURNS} attempts — marking as failed for human review."
+            --body "Symphony made no changes after ${MAX_TURNS} attempts -- marking as failed for human review."
           gh issue edit "${{ inputs.issue_number }}" \
             --add-label "symphony:failed" \
             --remove-label "symphony:in-progress" \
             --repo "${{ github.repository }}" || true
         fi
 
-    # ���═════════════════════════════════════════════════════════════════════════
-    # REVIEW — review a PR, apply fixes, merge
-    # ══════════════════════════════════════════════════════════════════════════
+    # =========================================================================
+    # REVIEW -- review a PR, apply fixes, merge
+    # ==========================================================================
 
     - name: Fetch linked issue details
       if: inputs.phrase == 'review' && steps.pr_info.outputs.issue_number != ''
@@ -457,9 +457,9 @@ Implemented by Symphony via Claude Code.
           --remove-label "symphony:reviewing" \
           --repo "${{ github.repository }}" || true
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # FIND — find open unclaimed issues and dispatch workers
-    # ══════════════════════════════════════════════════════════════════════════
+    # ==========================================================================
+    # FIND -- find open unclaimed issues and dispatch workers
+    # ==========================================================================
 
     - name: Find open unclaimed issues
       if: inputs.phrase == 'find'
@@ -493,7 +493,7 @@ Implemented by Symphony via Claude Code.
       run: |
         DISPATCH_WF="${{ inputs.dispatch_workflow }}"
         if [[ -z "$DISPATCH_WF" ]]; then
-          echo "No dispatch_workflow set — cannot dispatch workers. Set the dispatch_workflow input." >&2
+          echo "No dispatch_workflow set -- cannot dispatch workers. Set the dispatch_workflow input." >&2
           exit 0
         fi
         while IFS= read -r n; do
@@ -505,9 +505,9 @@ Implemented by Symphony via Claude Code.
             --field workflow_file="${{ inputs.workflow_file }}" || true
         done <<< "${{ steps.found_issues.outputs.list }}"
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ==========================================================================
     # FAILURE HANDLERS
-    # ══════════════════════════════════════════════════════════════════════════
+    # ==========================================================================
 
     - name: Handle dispatch failure
       if: failure() && inputs.phrase == 'dispatch'
