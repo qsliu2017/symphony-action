@@ -27,14 +27,17 @@ jobs:
   review:
     needs: ci
     if: startsWith(github.head_ref, 'symphony/issue-')
+    runs-on: ubuntu-latest
     permissions:
       issues: write
       contents: write
       pull-requests: write
       actions: write
-    uses: ./.github/workflows/symphony-review.yml
-    with:
-      pr_number: ${{ github.event.pull_request.number }}
-      workflow_file: WORKFLOW.md
-    secrets:
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - uses: qsliu2017/symphony-action@main
+        with:
+          phrase: review
+          pr_number: ${{ github.event.pull_request.number }}
+          workflow_file: WORKFLOW.md
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
