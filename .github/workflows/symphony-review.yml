@@ -1,6 +1,17 @@
 name: Symphony Review (reusable)
 
 on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to review"
+        type: number
+        required: true
+      workflow_file:
+        description: "Path to WORKFLOW.md in the caller repo"
+        type: string
+        required: false
+        default: "WORKFLOW.md"
   workflow_call:
     inputs:
       pr_number:
