@@ -20,27 +20,23 @@ REPO="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
 BUSY_LABELS="symphony:claimed,symphony:in-progress,symphony:pr-open,symphony:reviewing,symphony:done,symphony:failed"
 
 # Fetch open issues and filter out ones with busy labels
-gh issue list \
+ISSUES_RAW=$(gh issue list \
   --repo "$REPO" \
   --state open \
   --json number,labels \
-  --limit 100 \
-  | python3 - "$BUSY_LABELS" <<'PYEOF'
-import sys
-import json
+  --limit 100 2>/dev/null || echo "[]")
 
-busy = set(sys.argv[1].split(','))
+echo "$ISSUES_RAW" | python3 -c "
+import sys, json
+busy = set('$BUSY_LABELS'.split(','))
 raw = sys.stdin.read().strip()
 issues = json.loads(raw) if raw else []
-
 eligible = []
 for issue in issues:
     labels = {l['name'] for l in issue.get('labels', [])}
-    # Skip if any busy label is present (but symphony:todo is OK — it means "queued")
     busy_without_todo = busy - {'symphony:todo'}
     if not labels.intersection(busy_without_todo):
         eligible.append(issue['number'])
-
 for n in eligible:
     print(n)
-PYEOF
+"
