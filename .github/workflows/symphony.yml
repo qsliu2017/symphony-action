@@ -17,6 +17,7 @@ jobs:
     permissions:
       issues: write
       contents: read
+      actions: write
     uses: ./.github/workflows/symphony-dispatch.yml
     with:
       issue_number: ${{ github.event.issue.number || inputs.issue_number }}
