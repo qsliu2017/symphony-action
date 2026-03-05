@@ -5,7 +5,7 @@ on:
     inputs:
       issue_number:
         description: "Specific issue number to dispatch (omit to auto-discover)"
-        type: number
+        type: string
         required: false
       workflow_file:
         description: "Path to WORKFLOW.md in the caller repo"

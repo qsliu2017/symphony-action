@@ -1,6 +1,13 @@
 name: Symphony Post-Merge (reusable)
 
 on:
+  workflow_dispatch:
+    inputs:
+      workflow_file:
+        description: "Path to WORKFLOW.md in the caller repo"
+        type: string
+        required: false
+        default: "WORKFLOW.md"
   workflow_call:
     inputs:
       workflow_file:

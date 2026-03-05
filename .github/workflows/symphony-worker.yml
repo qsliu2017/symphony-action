@@ -1,6 +1,22 @@
 name: Symphony Worker (reusable)
 
 on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "GitHub issue number to implement"
+        type: number
+        required: true
+      attempt:
+        description: "Retry attempt number"
+        type: number
+        required: false
+        default: 0
+      workflow_file:
+        description: "Path to WORKFLOW.md in the caller repo"
+        type: string
+        required: false
+        default: "WORKFLOW.md"
   workflow_call:
     inputs:
       issue_number:

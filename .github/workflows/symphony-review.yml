@@ -46,12 +46,8 @@ jobs:
           echo "EOF" >> "$GITHUB_OUTPUT"
           BRANCH=$(echo "$PR_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['headRefName'])")
           echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
-          ISSUE_NUM=$(echo "$PR_JSON" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-refs = d.get('closingIssuesReferences', [])
-print(refs[0]['number'] if refs else '')
-          ")
+          ISSUE_NUM=$(echo "$PR_JSON" | python3 -c \
+            'import sys,json; d=json.load(sys.stdin); refs=d.get("closingIssuesReferences",[]); print(refs[0]["number"] if refs else "")')
           echo "issue_number=${ISSUE_NUM}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout PR branch
