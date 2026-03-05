@@ -30,7 +30,8 @@ import sys
 import json
 
 busy = set(sys.argv[1].split(','))
-issues = json.load(sys.stdin)
+raw = sys.stdin.read().strip()
+issues = json.loads(raw) if raw else []
 
 eligible = []
 for issue in issues:
