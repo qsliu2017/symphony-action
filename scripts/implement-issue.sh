@@ -93,4 +93,4 @@ if [[ "$ATTEMPT" -gt 0 ]]; then
 fi
 
 echo "=== Running Claude Code for issue #${ISSUE_NUMBER} (attempt ${ATTEMPT}) ===" >&2
-echo "$RENDERED_PROMPT" | $CLAUDE_CMD --print $MODEL_FLAG
+echo "$RENDERED_PROMPT" | $CLAUDE_CMD --print --dangerously-skip-permissions $MODEL_FLAG

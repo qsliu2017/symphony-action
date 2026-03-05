@@ -52,7 +52,7 @@ Respond with ONLY a JSON object — no prose, no markdown fences:
 If complex=false, sub_issues must be an empty array [].
 If complex=true, sub_issues must have 2-5 items that together fully cover the parent issue."
 
-RESULT=$(echo "$PLAN_PROMPT" | $CLAUDE_CMD --print $MODEL_FLAG 2>&1)
+RESULT=$(echo "$PLAN_PROMPT" | $CLAUDE_CMD --print --dangerously-skip-permissions $MODEL_FLAG 2>&1)
 
 # Validate that the result is valid JSON
 echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d))"

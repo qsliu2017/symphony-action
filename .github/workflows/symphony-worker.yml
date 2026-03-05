@@ -305,20 +305,39 @@ jobs:
             --remove-label "symphony:in-progress" \
             --repo "${{ github.repository }}" || true
 
-      - name: Close issue if no changes
+      - name: Retry or give up if no changes
         if: steps.plan.outputs.complex == 'false' && steps.changes.outputs.has_changes == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh issue comment "${{ inputs.issue_number }}" \
-            --repo "${{ github.repository }}" \
-            --body "Symphony ran but found no changes were needed — the issue may already be resolved."
-          gh issue edit "${{ inputs.issue_number }}" \
-            --add-label "symphony:done" \
-            --remove-label "symphony:in-progress" \
-            --repo "${{ github.repository }}" || true
-          gh issue close "${{ inputs.issue_number }}" \
-            --repo "${{ github.repository }}" || true
+          ATTEMPT="${{ inputs.attempt }}"
+          MAX_TURNS="${{ steps.config.outputs.max_turns }}"
+          MAX_TURNS="${MAX_TURNS:-5}"
+          NEXT_ATTEMPT=$((ATTEMPT + 1))
+
+          if [[ "$NEXT_ATTEMPT" -lt "$MAX_TURNS" ]]; then
+            echo "No changes on attempt ${ATTEMPT}, retrying (${NEXT_ATTEMPT}/${MAX_TURNS})" >&2
+            gh issue comment "${{ inputs.issue_number }}" \
+              --repo "${{ github.repository }}" \
+              --body "Symphony made no changes on attempt ${ATTEMPT} — retrying (attempt ${NEXT_ATTEMPT})."
+            gh issue edit "${{ inputs.issue_number }}" \
+              --remove-label "symphony:in-progress" \
+              --repo "${{ github.repository }}" || true
+            gh workflow run symphony-worker.yml \
+              --repo "${{ github.repository }}" \
+              --field issue_number="${{ inputs.issue_number }}" \
+              --field attempt="${NEXT_ATTEMPT}" \
+              --field workflow_file="${{ inputs.workflow_file }}"
+          else
+            echo "Giving up after ${MAX_TURNS} attempts with no changes" >&2
+            gh issue comment "${{ inputs.issue_number }}" \
+              --repo "${{ github.repository }}" \
+              --body "Symphony made no changes after ${MAX_TURNS} attempts — marking as failed for human review."
+            gh issue edit "${{ inputs.issue_number }}" \
+              --add-label "symphony:failed" \
+              --remove-label "symphony:in-progress" \
+              --repo "${{ github.repository }}" || true
+          fi
 
       - name: Handle failure
         if: failure()

@@ -66,7 +66,7 @@ Respond with ONLY a JSON object — no prose, no markdown fences:
 If changes_needed=true, after outputting the JSON, you will need to make the actual file edits
 using your tools. Make the minimum changes needed to fix the issues identified."
 
-  REVIEW_RESULT=$(echo "$REVIEW_PROMPT" | $CLAUDE_CMD --print $MODEL_FLAG 2>&1)
+  REVIEW_RESULT=$(echo "$REVIEW_PROMPT" | $CLAUDE_CMD --print --dangerously-skip-permissions $MODEL_FLAG 2>&1)
 
   # Extract JSON from the result (Claude may include extra text)
   REVIEW_JSON=$(echo "$REVIEW_RESULT" | python3 -c "
@@ -105,7 +105,7 @@ Please make the necessary changes to the files in the current directory to addre
 Do not open a PR or create new branches — just edit the files directly."
 
   echo "=== Applying review fixes ===" >&2
-  echo "$FIX_PROMPT" | $CLAUDE_CMD --print $MODEL_FLAG
+  echo "$FIX_PROMPT" | $CLAUDE_CMD --print --dangerously-skip-permissions $MODEL_FLAG
 
   # Check if there are changes to commit
   if git diff --quiet && git diff --staged --quiet; then
